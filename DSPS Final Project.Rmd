@@ -1,0 +1,191 @@
+---
+title: "DSPS Final Project"
+author: "Reese Feldman"
+date: "2023-12-11"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+In this first part of the analysis, the model is built on "classic" predictors of if someone will vote. 
+
+```{r}
+#loading in the data and subsetting by relevant columns and only registered voters
+ces2018 <- read.csv("cces18_common_vv(1).csv")
+ces2018 <- subset(ces2018, votereg == 1)
+ces2018 <- subset(ces2018, select = c(inputstate, birthyr, gender, educ, race, faminc_new, internethome, internetwork, newsint, CC18_308b, CC18_316, CC18_401))
+```
+
+```{r}
+#reclassify certain variables
+ces2018$voted <- ifelse(ces2018$CC18_401 == 5, 1, 0)
+ces2018$faminc_new <- ifelse(ces2018$faminc_new == 97, NA, ces2018$faminc_new)
+internet <- c(1, 2)
+ces2018$hasinternet <- ifelse(ces2018$internethome %in% internet | ces2018$internetwork %in% internet, 1, 0)
+ces2018$prevoter <- ifelse(ces2018$CC18_316 == 1, 1, ifelse(ces2018$CC18_316 == 2, 0, NA))
+ces2018$age <- 2018 - ces2018$birthyr
+#because DC does not have a cost of voting score, we must eliminate rows where the person is from DC
+ces2018$inputstate <- ifelse(ces2018$inputstate == 11, NA, ces2018$inputstate)
+#rename columns to be more informative
+colnames(ces2018)[colnames(ces2018) == "CC18_308b"] = "congapprove"
+```
+
+```{r}
+#eliminate rows with NA values
+ces2018 <- na.omit(ces2018)
+```
+
+```{r}
+#building a regression model based on typical variables
+base2018 <- glm(voted ~ age + gender + race,
+                    data = ces2018, family = binomial(link = "logit"))
+ces2018$voterlikelihood1 <- predict(base2018, type = "response")
+range(ces2018$voterlikelihood1)
+```
+
+```{r}
+#convert voter likelihood into a prediction
+ces2018$predictedvoter1 <- ifelse(ces2018$voterlikelihood1 > .9, 1, 0)
+table(actual = ces2018$voted, predicted = ces2018$predictedvoter1)
+```
+
+```{r}
+## false positive and negative rates
+fp1 <- sum(ces2018$predictedvoter1 == 1 & ces2018$voted == 0) / 
+  sum(ces2018$voted == 0)
+fn1 <- sum(ces2018$predictedvoter1 == 0 & ces2018$voted == 1) / 
+  sum(ces2018$voted == 1)
+fp1
+fn1
+```
+
+```{r}
+summary(base2018)
+```
+
+
+This next part of the analysis will build the model using additional predictors, in addition to all of the predictors from before
+
+```{r}
+#creating the cost of voter index column
+covicsv <- read.csv("covi.csv")
+covi2018 <- merge(ces2018, covicsv, by = "inputstate")
+```
+
+```{r}
+#building the regression model with COVI included
+new2018 <- glm(voted ~ age + gender + educ + race + faminc_new + hasinternet + COVI + prevoter + newsint + congapprove,
+                    data = covi2018, family = binomial(link = "logit"))
+covi2018$voterlikelihood2 <- predict(new2018, type = "response")
+range(covi2018$voterlikelihood2)
+```
+
+```{r}
+#convert voter likelihood into a prediction
+covi2018$predictedvoter2 <- ifelse(covi2018$voterlikelihood2 > .9, 1, 0)
+table(actual = covi2018$voted, predicted = covi2018$predictedvoter2)
+```
+
+```{r}
+## false positive and negative rates
+fp1 <- sum(covi2018$predictedvoter2 == 1 & covi2018$voted == 0) / 
+  sum(covi2018$voted == 0)
+fn1 <- sum(covi2018$predictedvoter2 == 0 & ces2018$voted == 1) / 
+  sum(covi2018$voted == 1)
+fp1
+fn1
+```
+```{r}
+summary(new2018)
+```
+
+```{r}
+#building the regression model without race included
+best2018 <- glm(voted ~ age + gender + educ + faminc_new + hasinternet + COVI + prevoter + newsint + congapprove,
+                    data = covi2018, family = binomial(link = "logit"))
+covi2018$voterlikelihood3 <- predict(best2018, type = "response")
+range(covi2018$voterlikelihood3)
+```
+
+```{r}
+#convert voter likelihood into a prediction
+covi2018$predictedvoter3 <- ifelse(covi2018$voterlikelihood3 > .9, 1, 0)
+table(actual = covi2018$voted, predicted = covi2018$predictedvoter3)
+```
+
+```{r}
+## false positive and negative rates
+fp1 <- sum(covi2018$predictedvoter3 == 1 & covi2018$voted == 0) / 
+  sum(covi2018$voted == 0)
+fn1 <- sum(covi2018$predictedvoter3 == 0 & ces2018$voted == 1) / 
+  sum(covi2018$voted == 1)
+fp1
+fn1
+```
+
+```{r}
+summary(best2018)
+```
+
+
+Now that we have built a somewhat good predictive model for voting, we are going to apply the model to the following midterm election in an attempt to predict likely voters "prior" to the 2022 election.
+
+```{r}
+ces2022 <- read.csv("CCES22_Common_OUTPUT_vv_topost.csv")
+ces2022 <- subset(ces2022, votereg == 1)
+ces2022 <- subset(ces2022, select = c(inputstate, birthyr, gender4, educ, faminc_new, internethome, internetwork, newsint, CC22_320b, presvote20post, CC22_401))
+```
+
+```{r}
+#reclassify certain variables
+ces2022$voted <- ifelse(ces2022$CC22_401 == 5, 1, 0)
+ces2022$age <- 2022 - ces2022$birthyr
+ces2022$faminc_new <- ifelse(ces2022$faminc_new == 97, NA, ces2022$faminc_new)
+internet <- c(1, 2)
+ces2022$hasinternet <- ifelse(ces2022$internethome %in% internet | ces2022$internetwork %in% internet, 1, 0)
+ces2022$prevoter <- ifelse(ces2022$presvote20post == 5, 0, ifelse(is.na(ces2022$presvote20post), NA, 1))
+#because DC does not have a cost of voting score, we must eliminate rows where the person is from DC
+ces2022$inputstate <- ifelse(ces2022$inputstate == 11, NA, ces2022$inputstate)
+#rename columns to be more informative
+colnames(ces2022)[colnames(ces2022) == "CC22_320b"] = "congapprove"
+colnames(ces2022)[colnames(ces2022) == "gender4"] = "gender"
+```
+
+```{r}
+#eliminate rows with NA values
+ces2022 <- na.omit(ces2022)
+```
+
+```{r}
+#creating the cost of voter index column
+covicsv22 <- read.csv("COVI2022.csv")
+colnames(covicsv22)[colnames(covicsv22) == "statenu"] = "inputstate"
+covi2022 <- merge(ces2022, covicsv22, by = "inputstate")
+```
+
+```{r}
+#making predictions for 2022
+covi2022$votelikelihood <- predict(best2018, covi2022, type = "response")
+range(covi2022$votelikelihood)
+```
+
+```{r}
+#convert voter likelihood into a prediction
+covi2022$predictedvoter22 <- ifelse(covi2022$votelikelihood> .9, 1, 0)
+table(actual = covi2022$voted, predicted = covi2022$predictedvoter22)
+```
+
+```{r}
+## false positive and negative rates
+fp1 <- sum(covi2022$predictedvoter22 == 1 & covi2022$voted == 0) / 
+  sum(covi2022$voted == 0)
+fn1 <- sum(covi2022$predictedvoter22 == 0 & ces2022$voted == 1) / 
+  sum(covi2022$voted == 1)
+fp1
+fn1
+```
+
+
+
